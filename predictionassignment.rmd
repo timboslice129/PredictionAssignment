@@ -1,0 +1,82 @@
+### Prediction Assignment   
+
+
+```{r message=FALSE}
+library(caret)
+library(dplyr)
+```
+# Loading our data
+
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+# Cleaning Data
+
+First we decided to deal with NAs by removing columns with NA values. This is because 
+many predictors were missing values and we want to keep all observations in the datasets.
+
+```{r}
+col.na <- colSums(sapply(training,is.na))
+col.na.test <- colSums(sapply(testing, is.na))
+training1 <- training[,col.na == 0 & col.na.test==0] # We subset for 0 Nas in both testing and training so that the predictors of both datasets match
+testing1 <- testing[,col.na == 0 & col.na.test ==0]
+dim(training1)
+dim(testing1)
+```
+
+After removing our columns with NAs we are left with 60 columns in our testing and training datasets
+
+#dropping variables like name and user_id which are unlikely to be predictors:
+```{r}
+training2 <- select(training1, -c(user_name, raw_timestamp_part_1, raw_timestamp_part_2,cvtd_timestamp, new_window, X))
+testing2 <- select(testing1, -c(problem_id, user_name, raw_timestamp_part_1, raw_timestamp_part_2,cvtd_timestamp, new_window, X))
+```
+
+Due to the high accuracy that is required to correctly predict all 20 test cases correctly (.995 accuracy for .9 probability)
+it was decided that a random forrest model would be appropriate as it generally achieves high accuracy. However cross validation is required to ensure that we don't overfit the model and have a high out of sample error rate.
+
+
+Random forrests are not computationally efficient and we ran into problems on the large datasets.
+
+To deal with this we configered parallel processing as described in Len Greskis tutorial https://github.com/lgreski/datasciencectacontent/blob/master/markdown/pml-randomForestPerformance.md
+
+# configuring parallel processing
+```{r message=FALSE}
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+```
+
+#Configure trainControl object
+# We are using k fold cross validation instead of bootstrapping and reducing samples from 25 to 5. 
+```{r cache=TRUE}
+fitControl <- trainControl(method = "cv",
+                          number = 5,
+                          allowParallel = TRUE)
+```
+
+# Building Random Forrest Model
+```{r}
+fit <- train(classe ~ ., method="rf", data=training2)
+```
+
+# Analysing model fit
+```{r}
+fit
+fit$finalModel
+plot(fit, main="Accuracy by Predictor Count")
+```
+
+Note that the final model selected by the random forrest algorithm uses 27 predictors returning an accuracy of 0.997 with an Out of Bag (OOB) error of 0.13%. Note that the OOB error rate is equivalent to the out of sample error we would calculate on a holdout dataset using a confusion matrix. Therefore cross validation using a test dataset is not required. 
+
+# Predicting test data
+
+Our model appears to be highly accurate and have a very low out of sample error rate so we are ready to predict the exercise classes of our test cases:
+
+```{r}
+data.frame(predict(fit,newdata = testing2))
+```
+
